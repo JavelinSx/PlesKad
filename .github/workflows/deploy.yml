@@ -1,0 +1,144 @@
+name: Deploy to Yandex Object Storage
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    env:
+      SITE_URL: ${{ secrets.SITE_URL }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Inject environment variables into nuxt.config.ts
+        run: |
+          echo "Injecting SITE_URL directly into nuxt.config.ts..."
+          sed -i "s|siteUrl: process.env.SITE_URL \|\| \"https://pleskad.ru\"|siteUrl: \"$SITE_URL\"|g" nuxt.config.ts
+          echo "✅ Variables injected into nuxt.config.ts"
+          echo "Modified config (relevant lines):"
+          grep -A 3 "public:" nuxt.config.ts
+
+      - name: Build static site
+        run: |
+          echo "Building site..."
+          npm run generate
+
+      - name: Verify build output
+        run: |
+          echo "Checking generated files..."
+          ls -la .output/
+          ls -la .output/public/
+          echo "Build completed successfully!"
+
+      - name: Verify AWS CLI
+        run: |
+          aws --version
+
+      - name: Configure AWS CLI for Yandex Cloud
+        run: |
+          aws configure set aws_access_key_id ${{ secrets.YC_KEY_ID }}
+          aws configure set aws_secret_access_key ${{ secrets.YC_SECRET_KEY }}
+          aws configure set region ru-central1
+
+      - name: Deploy to Yandex Object Storage
+        run: |
+          echo "Deploying files with correct Content-Type headers..."
+
+          echo "Uploading HTML files..."
+          aws --endpoint-url=https://storage.yandexcloud.net \
+            s3 sync .output/public s3://${{ secrets.YC_BUCKET_NAME }} \
+            --exclude "*" \
+            --include "*.html" \
+            --content-type "text/html; charset=utf-8" \
+            --cache-control "public, max-age=0, must-revalidate" \
+            --metadata-directive REPLACE \
+            --acl public-read
+
+          echo "Uploading CSS files..."
+          aws --endpoint-url=https://storage.yandexcloud.net \
+            s3 sync .output/public s3://${{ secrets.YC_BUCKET_NAME }} \
+            --exclude "*" \
+            --include "*.css" \
+            --content-type "text/css; charset=utf-8" \
+            --cache-control "public, max-age=31536000, immutable" \
+            --metadata-directive REPLACE \
+            --acl public-read
+
+          echo "Uploading JS files..."
+          aws --endpoint-url=https://storage.yandexcloud.net \
+            s3 sync .output/public s3://${{ secrets.YC_BUCKET_NAME }} \
+            --exclude "*" \
+            --include "*.js" \
+            --include "*.mjs" \
+            --content-type "application/javascript; charset=utf-8" \
+            --cache-control "public, max-age=31536000, immutable" \
+            --metadata-directive REPLACE \
+            --acl public-read
+
+          echo "Uploading JSON files..."
+          aws --endpoint-url=https://storage.yandexcloud.net \
+            s3 sync .output/public s3://${{ secrets.YC_BUCKET_NAME }} \
+            --exclude "*" \
+            --include "*.json" \
+            --content-type "application/json; charset=utf-8" \
+            --cache-control "public, max-age=0, must-revalidate" \
+            --metadata-directive REPLACE \
+            --acl public-read
+
+          echo "Uploading images..."
+          aws --endpoint-url=https://storage.yandexcloud.net \
+            s3 sync .output/public s3://${{ secrets.YC_BUCKET_NAME }} \
+            --exclude "*" \
+            --include "*.png" \
+            --include "*.jpg" \
+            --include "*.jpeg" \
+            --include "*.gif" \
+            --include "*.svg" \
+            --include "*.webp" \
+            --include "*.ico" \
+            --cache-control "public, max-age=31536000, immutable" \
+            --metadata-directive REPLACE \
+            --acl public-read
+
+          echo "Uploading remaining files..."
+          aws --endpoint-url=https://storage.yandexcloud.net \
+            s3 sync .output/public s3://${{ secrets.YC_BUCKET_NAME }} \
+            --exclude "*.html" \
+            --exclude "*.css" \
+            --exclude "*.js" \
+            --exclude "*.mjs" \
+            --exclude "*.json" \
+            --exclude "*.png" \
+            --exclude "*.jpg" \
+            --exclude "*.jpeg" \
+            --exclude "*.gif" \
+            --exclude "*.svg" \
+            --exclude "*.webp" \
+            --exclude "*.ico" \
+            --exclude ".git/*" \
+            --exclude ".github/*" \
+            --cache-control "public, max-age=3600" \
+            --metadata-directive REPLACE \
+            --acl public-read
+
+          echo "✅ All files uploaded with correct Content-Type headers"
+
+      - name: Deployment complete
+        run: |
+          echo "✅ Deployment completed successfully!"
+          echo "🌐 Site URL: https://${{ secrets.YC_BUCKET_NAME }}.storage.yandexcloud.net"

@@ -1,0 +1,56 @@
+/* Design tokens ported from the Claude Design "Nocturne" prototype
+   (new design/ПлесКад.dc.html — light, new design/ПлесКад - тёмный.dc.html — dark) */
+
+:root {
+  --pk-bg: #f3f5fe;
+  --pk-surface: #e4e7f5;
+  --pk-surface-2: #eef1fb;
+  --pk-border: #cfd3e5;
+  --pk-border-strong: #9397ab;
+  --pk-text: #292b31;
+  --pk-text-2: #33363f;
+  --pk-text-3: #3f4352;
+  --pk-accent: #16a34a;
+  --pk-accent-strong: #0f5c2e;
+  --pk-accent-strong-hover: #0b4a24;
+  --pk-link: #0f5c2e;
+  --pk-link-hover: #0b4a24;
+  --pk-on-accent: #f8f9ff;
+  --pk-overlay: rgba(41, 43, 49, 0.44);
+  --pk-header-bg: rgba(238, 241, 251, 0.96);
+  --pk-grid-line: rgba(22, 163, 74, 0.15);
+  --pk-section-grad: linear-gradient(120deg, #0e3320, #14532d 55%, #12402a);
+  --pk-section-text: #f3f5fe;
+}
+
+html.dark {
+  --pk-bg: #161826;
+  --pk-surface: #1b1d2c;
+  --pk-surface-2: #1e2131;
+  --pk-border: rgba(233, 233, 237, 0.14);
+  --pk-border-strong: rgba(233, 233, 237, 0.24);
+  --pk-text: #e9e9ed;
+  --pk-text-2: rgba(233, 233, 237, 0.82);
+  --pk-text-3: rgba(233, 233, 237, 0.62);
+  --pk-accent: #22c55e;
+  --pk-accent-strong: #22c55e;
+  --pk-accent-strong-hover: #5fd992;
+  --pk-link: #5fd992;
+  --pk-link-hover: #9aebbd;
+  --pk-on-accent: #161826;
+  --pk-overlay: rgba(0, 0, 0, 0.55);
+  --pk-header-bg: rgba(22, 24, 38, 0.86);
+  --pk-grid-line: rgba(34, 197, 94, 0.18);
+}
+
+body {
+  background: var(--pk-bg);
+  color: var(--pk-text);
+}
+
+a {
+  color: var(--pk-link);
+}
+a:hover {
+  color: var(--pk-link-hover);
+}

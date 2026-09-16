@@ -1,0 +1,11 @@
+@import "tailwindcss";
+@import "@nuxt/ui";
+@import "./theme.css";
+@import "./components.css";
+@import "./animations.css";
+@import "./transitions.css";
+
+body {
+  font-family: Inter, system-ui, sans-serif;
+  overflow-x: hidden;
+}
