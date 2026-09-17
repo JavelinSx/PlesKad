@@ -47,4 +47,5 @@ export interface TeamMember {
   name: string;
   role: string;
   about: string;
+  photo?: string;
 }
