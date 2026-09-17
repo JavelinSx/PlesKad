@@ -33,7 +33,8 @@ useHead({
 .services-hero {
   position: relative;
   overflow: hidden;
-  padding: 72px 0 44px;
+  padding-top: 72px;
+  padding-bottom: 44px;
 }
 .services-hero-grid {
   position: absolute;
