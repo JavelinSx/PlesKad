@@ -1,16 +1,8 @@
-// Yandex Cloud Function — приём заявок с сайта ПлесКад, отправка в Telegram.
-// Паттерн скопирован с проверенной рабочей функции (https.request + обычные
-// переменные окружения, без Lockbox, Node.js 22).
+// Yandex Cloud Function — приём заявок с сайта ПлесКад, отправка в VK
+// (вместо Telegram — ПДн не покидают Россию, и нет проблем с блокировкой сети).
+// Паттерн https.request + обычные переменные окружения (без Lockbox), Node.js 18/22.
 
 const https = require('https');
-
-function escapeHtml(text) {
-  if (!text) return '';
-  return String(text)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
-}
 
 function getObjectTypeText(objectTypeValue) {
   const objectTypes = {
@@ -24,70 +16,82 @@ function getObjectTypeText(objectTypeValue) {
   return objectTypes[objectTypeValue] || objectTypeValue;
 }
 
-function formatTelegramMessage(data) {
-  let message = `🔔 <b>НОВАЯ ЗАЯВКА С САЙТА ПЛЕСКАД</b>\n\n`;
+function formatMessage(data) {
+  let message = `🔔 НОВАЯ ЗАЯВКА С САЙТА ПЛЕСКАД\n\n`;
 
-  message += `<b>Услуга:</b> ${escapeHtml(data.service)}\n`;
+  message += `Услуга: ${data.service}\n`;
   if (data.serviceType) {
-    message += `<b>Вид работ:</b> ${escapeHtml(data.serviceType)}\n`;
+    message += `Вид работ: ${data.serviceType}\n`;
   }
-  message += `<b>Тип объекта:</b> ${escapeHtml(getObjectTypeText(data.objectType))}\n`;
-  message += `<b>Населённый пункт:</b> ${escapeHtml(data.city)}\n`;
+  message += `Тип объекта: ${getObjectTypeText(data.objectType)}\n`;
+  message += `Населённый пункт: ${data.city}\n`;
   if (data.address) {
-    message += `<b>Адрес/кад. номер:</b> ${escapeHtml(data.address)}\n`;
+    message += `Адрес/кад. номер: ${data.address}\n`;
   }
   if (data.additionalInfo) {
-    message += `\n<b>Дополнительно:</b> ${escapeHtml(data.additionalInfo)}\n`;
+    message += `\nДополнительно: ${data.additionalInfo}\n`;
   }
 
-  message += `\n👤 <b>Контакты:</b>\n`;
-  message += `   ФИО: ${escapeHtml(data.fullName)}\n`;
-  message += `   📱 Телефон: ${escapeHtml(data.phone)}\n`;
+  message += `\nКонтакты:\n`;
+  message += `ФИО: ${data.fullName}\n`;
+  message += `Телефон: ${data.phone}\n`;
   if (data.email) {
-    message += `   ✉️ Email: ${escapeHtml(data.email)}\n`;
+    message += `Email: ${data.email}\n`;
   }
 
-  message += `\n<i>Дата заявки: ${new Date().toLocaleString('ru-RU')}</i>`;
+  message += `\nДата заявки: ${new Date().toLocaleString('ru-RU')}`;
 
   return message;
 }
 
-function sendToTelegram(botToken, chatId, message) {
+function sendToVk(communityToken, userId, message) {
   return new Promise((resolve, reject) => {
-    const data = JSON.stringify({
-      chat_id: Number(chatId),
-      text: message,
-      parse_mode: 'HTML'
+    const params = new URLSearchParams({
+      user_id: String(userId),
+      message,
+      random_id: String(Date.now()),
+      access_token: communityToken,
+      v: '5.199'
     });
 
-    // Для UTF-8 нужно считать байты, а не символы
-    const dataBuffer = Buffer.from(data, 'utf8');
+    const payload = params.toString();
 
     const options = {
-      hostname: 'api.telegram.org',
+      hostname: 'api.vk.ru',
       port: 443,
-      path: `/bot${botToken}/sendMessage`,
+      path: '/method/messages.send',
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json; charset=utf-8',
-        'Content-Length': dataBuffer.length
-      }
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'Content-Length': Buffer.byteLength(payload)
+      },
+      timeout: 8000
     };
 
     const req = https.request(options, (res) => {
       let body = '';
       res.on('data', (chunk) => (body += chunk));
       res.on('end', () => {
-        if (res.statusCode === 200) {
-          resolve(JSON.parse(body));
-        } else {
-          reject(new Error(`Telegram API error: ${res.statusCode} ${body}`));
+        try {
+          const data = JSON.parse(body);
+          if (data.error) {
+            reject(new Error(`VK API error: ${JSON.stringify(data.error)}`));
+          } else {
+            resolve(data);
+          }
+        } catch (e) {
+          reject(new Error(`Bad response from VK: ${body}`));
         }
       });
     });
 
+    req.on('timeout', () => {
+      req.destroy();
+      reject(new Error('VK request timed out'));
+    });
     req.on('error', reject);
-    req.write(dataBuffer);
+
+    req.write(payload);
     req.end();
   });
 }
@@ -112,21 +116,19 @@ module.exports.handler = async function (event, context) {
   try {
     const body = JSON.parse(event.body);
 
-    // Обычные переменные окружения — Редактировать → Переменные окружения.
-    // НЕ через Yandex Lockbox.
-    const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
-    const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID;
+    const VK_COMMUNITY_TOKEN = process.env.VK_COMMUNITY_TOKEN;
+    const VK_USER_ID = process.env.VK_USER_ID;
 
-    if (!TELEGRAM_BOT_TOKEN || !TELEGRAM_CHAT_ID) {
+    if (!VK_COMMUNITY_TOKEN || !VK_USER_ID) {
       return {
         statusCode: 500,
         headers,
-        body: JSON.stringify({ success: false, error: 'Telegram configuration missing' })
+        body: JSON.stringify({ success: false, error: 'VK configuration missing' })
       };
     }
 
-    const message = formatTelegramMessage(body);
-    await sendToTelegram(TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, message);
+    const message = formatMessage(body);
+    await sendToVk(VK_COMMUNITY_TOKEN, VK_USER_ID, message);
 
     return {
       statusCode: 200,
