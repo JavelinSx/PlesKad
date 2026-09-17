@@ -4,6 +4,11 @@ on:
   schedule:
     - cron: "0 6 * * 1" # каждый понедельник в 06:00 UTC (09:00 МСК)
   workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Тестовый прогон: проверить RSS + доступ к таблице, без вызова Claude и без записи"
+        type: boolean
+        default: false
 
 jobs:
   update-laws:
@@ -30,6 +35,7 @@ jobs:
           GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
           GOOGLE_SHEET_ID: ${{ secrets.GOOGLE_SHEET_ID }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          DRY_RUN: ${{ inputs.dry_run == true }}
         run: node update-laws.mjs
 
       - name: Commit and push if data/laws.ts changed

@@ -138,12 +138,17 @@ ${entries}
 `;
 }
 
+const DRY_RUN = process.env.DRY_RUN === 'true';
+
 async function main() {
   const parser = new Parser();
   const feed = await parser.parseURL(RSS_URL);
+  console.log(`Fetched RSS feed OK: ${feed.items.length} items.`);
 
   const sheets = await getSheetsClient();
   const existingRows = await readRows(sheets);
+  console.log(`Connected to Google Sheet OK: ${existingRows.length} existing row(s).`);
+
   const existingLinks = new Set(existingRows.map((r) => r[5]).filter(Boolean));
   const existingTitles = new Set(existingRows.map((r) => r[1]).filter(Boolean));
 
@@ -152,7 +157,19 @@ async function main() {
   );
 
   const toProcess = candidates.slice(0, MAX_NEW_PER_RUN);
-  console.log(`Feed items: ${feed.items.length}. Relevant & new: ${candidates.length}. Processing: ${toProcess.length}.`);
+  console.log(`Relevant & new: ${candidates.length}. Would process: ${toProcess.length}.`);
+
+  if (DRY_RUN) {
+    console.log('\nDRY RUN — stopping here. No Claude calls, no writes to the Sheet, no changes to data/laws.ts.');
+    console.log('Candidates that would be sent to Claude:');
+    for (const item of toProcess) {
+      console.log(`  - [${item.pubDate || item.isoDate}] ${item.title}\n    ${item.link}`);
+    }
+    if (toProcess.length === 0) {
+      console.log('  (none — either nothing relevant in the current feed, or everything is already in the sheet)');
+    }
+    return;
+  }
 
   if (toProcess.length > 0) {
     const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
