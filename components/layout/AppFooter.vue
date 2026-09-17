@@ -12,7 +12,7 @@
       <div>
         <h6 class="footer-heading">Услуги</h6>
         <div class="footer-links">
-          <NuxtLink to="/services" class="footer-link">Межевание участков</NuxtLink>
+          <NuxtLink to="/services" class="footer-link">Кадастровые работы в отношении земельных участков</NuxtLink>
           <NuxtLink to="/services" class="footer-link">Технические планы</NuxtLink>
           <NuxtLink to="/services" class="footer-link">Геодезия</NuxtLink>
           <NuxtLink to="/services" class="footer-link">Консультации</NuxtLink>
