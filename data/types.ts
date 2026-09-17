@@ -21,8 +21,16 @@ export interface Feature {
 export interface LawUpdate {
   date: string;
   t: string;
-  d: string;
+  /** Короткая версия на 1 строку — тизер в ленте на Главной */
+  summary: string;
+  /**
+   * Полная расшифровка простым языком для попапа.
+   * Один элемент массива — обычный абзац (5-6 предложений).
+   * Несколько элементов — нумерованный список шагов/пунктов.
+   */
+  details: string[];
   src: string;
+  link?: string;
 }
 
 export interface FaqItem {

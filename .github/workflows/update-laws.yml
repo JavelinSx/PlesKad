@@ -1,0 +1,45 @@
+name: Update law changes feed
+
+on:
+  schedule:
+    - cron: "0 6 * * 1" # каждый понедельник в 06:00 UTC (09:00 МСК)
+  workflow_dispatch:
+
+jobs:
+  update-laws:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install updater dependencies
+        working-directory: scripts/laws-updater
+        run: npm install
+
+      - name: Run laws updater
+        working-directory: scripts/laws-updater
+        env:
+          GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
+          GOOGLE_SHEET_ID: ${{ secrets.GOOGLE_SHEET_ID }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: node update-laws.mjs
+
+      - name: Commit and push if data/laws.ts changed
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          if git diff --quiet -- data/laws.ts; then
+            echo "No changes to data/laws.ts — nothing to commit."
+          else
+            git add data/laws.ts
+            git commit -m "chore: weekly law updates refresh"
+            git push
+          fi

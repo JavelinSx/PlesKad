@@ -12,7 +12,7 @@
         <div v-for="law in topLaws" :key="law.t" class="law-item">
           <div class="law-date">{{ law.date }}</div>
           <div class="law-title">{{ law.t }}</div>
-          <p class="law-desc">{{ law.d }}</p>
+          <p class="law-desc">{{ law.summary }}</p>
           <span class="law-src">Источник: {{ law.src }}</span>
         </div>
       </div>

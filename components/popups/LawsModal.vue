@@ -8,7 +8,12 @@
       <span class="law-date">{{ law.date }}</span>
       <span>
         <span class="law-title">{{ law.t }}</span>
-        <span class="law-desc">{{ law.d }}</span>
+
+        <p v-if="law.details.length === 1" class="law-desc">{{ law.details[0] }}</p>
+        <ol v-else class="law-steps">
+          <li v-for="(step, i) in law.details" :key="i">{{ step }}</li>
+        </ol>
+
         <span class="law-src">Источник: {{ law.src }}</span>
       </span>
     </div>
@@ -60,8 +65,21 @@ const { activePopup, close } = usePopups();
 .law-desc {
   display: block;
   font-size: 13.5px;
+  line-height: 1.55;
   color: var(--pk-text-3);
-  margin-bottom: 6px;
+  margin: 0 0 8px;
+}
+.law-steps {
+  margin: 0 0 8px;
+  padding-left: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.law-steps li {
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: var(--pk-text-3);
 }
 .law-src {
   font-size: 12px;
