@@ -55,6 +55,13 @@ jobs:
           aws configure set aws_secret_access_key ${{ secrets.YC_SECRET_KEY }}
           aws configure set region ru-central1
 
+      - name: Empty the bucket before deploy
+        run: |
+          echo "Clearing out old site files from the bucket..."
+          aws --endpoint-url=https://storage.yandexcloud.net \
+            s3 rm s3://${{ secrets.YC_BUCKET_NAME }} --recursive
+          echo "✅ Bucket emptied"
+
       - name: Deploy to Yandex Object Storage
         run: |
           echo "Deploying files with correct Content-Type headers..."
