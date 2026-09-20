@@ -37,7 +37,7 @@
 | --- | --- |
 | `GOOGLE_SHEET_ID` | ID таблицы из шага 1.5 |
 | `GOOGLE_SERVICE_ACCOUNT_JSON` | Всё содержимое скачанного `.json`-файла целиком (откройте его текстовым редактором, скопируйте весь текст, включая `{ }`) |
-| `ANTHROPIC_API_KEY` | Ваш ключ с [console.anthropic.com](https://console.anthropic.com/settings/keys) |
+| `DEEPSEEK_API_KEY` | Ваш ключ с [platform.deepseek.com/api_keys](https://platform.deepseek.com/api_keys) |
 
 ## 5. Проверка
 

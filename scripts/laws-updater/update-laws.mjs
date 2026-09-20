@@ -2,14 +2,13 @@
 // 1. Pull the ConsultantPlus "hot documents" RSS feed
 // 2. Keep only items relevant to cadastral/land/real-estate work
 // 3. Skip anything already stored in the Google Sheet (dedup by link/title)
-// 4. Ask Claude to rewrite the top 3 new items in plain language
+// 4. Ask DeepSeek to rewrite the top 3 new items in plain language
 // 5. Append the new rows to the Sheet (source of truth / manual review point)
 // 6. Regenerate ../../data/laws.ts from the sheet so the site picks it up on next deploy
 
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import Anthropic from '@anthropic-ai/sdk';
 import { google } from 'googleapis';
 import Parser from 'rss-parser';
 
@@ -20,7 +19,8 @@ const SHEET_RANGE = 'laws!A:F'; // date | title | summary | details (JSON array)
 const MAX_NEW_PER_RUN = 3;
 const MAX_ITEMS_IN_SITE = 12;
 const OUTPUT_TS_PATH = path.resolve(__dirname, '../../data/laws.ts');
-const MODEL = 'claude-sonnet-5';
+const DEEPSEEK_API_URL = 'https://api.deepseek.com/chat/completions';
+const MODEL = 'deepseek-chat';
 
 const KEYWORDS = [
   /кадастр/i,
@@ -70,7 +70,7 @@ async function readRows(sheets) {
   return res.data.values || [];
 }
 
-async function humanize(anthropic, item) {
+async function humanize(item) {
   const prompt = `Ты помогаешь кадастровой компании «ПлесКад» объяснять клиентам изменения в законодательстве простым языком, без юридического жаргона.
 
 Официальное описание изменения:
@@ -87,23 +87,39 @@ async function humanize(anthropic, item) {
   - Если это просто описание изменения без чёткой последовательности — верни ОДИН элемент массива: связный абзац на 5-6 предложений.
 - Пиши так, как будто объясняешь клиенту по телефону, а не цитируешь закон. Никакой воды и канцелярита.`;
 
-  const response = await anthropic.messages.create({
-    model: MODEL,
-    max_tokens: 1024,
-    messages: [{ role: 'user', content: prompt }],
+  const apiKey = process.env.DEEPSEEK_API_KEY;
+  if (!apiKey) throw new Error('DEEPSEEK_API_KEY is not set');
+
+  const response = await fetch(DEEPSEEK_API_URL, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({
+      model: MODEL,
+      messages: [{ role: 'user', content: prompt }],
+      response_format: { type: 'json_object' },
+      temperature: 0.3,
+    }),
   });
 
-  const text = response.content
-    .filter((block) => block.type === 'text')
-    .map((block) => block.text)
-    .join('')
-    .trim();
+  if (!response.ok) {
+    const errText = await response.text();
+    throw new Error(`DeepSeek API error ${response.status}: ${errText}`);
+  }
 
-  const jsonText = text.replace(/^```json\s*/i, '').replace(/```\s*$/, '');
-  const parsed = JSON.parse(jsonText);
+  const data = await response.json();
+  const text = data.choices?.[0]?.message?.content?.trim();
+
+  if (!text) {
+    throw new Error(`Empty response from DeepSeek: ${JSON.stringify(data)}`);
+  }
+
+  const parsed = JSON.parse(text);
 
   if (!parsed.summary || !Array.isArray(parsed.details) || parsed.details.length === 0) {
-    throw new Error(`Unexpected Claude response shape: ${text}`);
+    throw new Error(`Unexpected DeepSeek response shape: ${text}`);
   }
 
   return parsed;
@@ -160,8 +176,8 @@ async function main() {
   console.log(`Relevant & new: ${candidates.length}. Would process: ${toProcess.length}.`);
 
   if (DRY_RUN) {
-    console.log('\nDRY RUN — stopping here. No Claude calls, no writes to the Sheet, no changes to data/laws.ts.');
-    console.log('Candidates that would be sent to Claude:');
+    console.log('\nDRY RUN — stopping here. No DeepSeek calls, no writes to the Sheet, no changes to data/laws.ts.');
+    console.log('Candidates that would be sent to DeepSeek:');
     for (const item of toProcess) {
       console.log(`  - [${item.pubDate || item.isoDate}] ${item.title}\n    ${item.link}`);
     }
@@ -172,12 +188,11 @@ async function main() {
   }
 
   if (toProcess.length > 0) {
-    const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
     const newRows = [];
 
     for (const item of toProcess) {
       const date = new Date(item.pubDate || item.isoDate || Date.now()).toLocaleDateString('ru-RU');
-      const { summary, details } = await humanize(anthropic, {
+      const { summary, details } = await humanize({
         title: item.title,
         description: item.contentSnippet || item.content || item.title,
       });
