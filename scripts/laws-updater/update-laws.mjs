@@ -73,7 +73,15 @@ async function getSheetsClient() {
 async function readRows(sheets) {
   const spreadsheetId = process.env.GOOGLE_SHEET_ID;
   const res = await sheets.spreadsheets.values.get({ spreadsheetId, range: SHEET_RANGE });
-  return res.data.values || [];
+  const rows = res.data.values || [];
+
+  // Если первая строка — заголовки (например "date | title | ..."), а не
+  // реальная запись, пропускаем её, чтобы она не попала на сайт как закон.
+  if (rows.length > 0 && (rows[0][0] || '').trim().toLowerCase() === 'date') {
+    return rows.slice(1);
+  }
+
+  return rows;
 }
 
 async function callDeepSeek(prompt) {
