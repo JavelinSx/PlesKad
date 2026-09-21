@@ -15,6 +15,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      actions: write # needed to dispatch deploy.yml below
 
     steps:
       - name: Checkout code
@@ -40,22 +41,37 @@ jobs:
         run: node update-laws.mjs
 
       - name: Commit and push if data/laws.ts changed
+        id: commit
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           if git diff --quiet -- data/laws.ts; then
             echo "No changes to data/laws.ts — nothing to commit."
+            echo "pushed=false" >> "$GITHUB_OUTPUT"
           else
             git add data/laws.ts
             git commit -m "chore: monthly law updates refresh"
             # main can move between checkout and push (e.g. someone pushing a
             # code change at the same time) — retry a few times with a rebase
             # instead of failing the whole run over a timing collision.
+            pushed=false
             for i in 1 2 3; do
               if git push; then
+                pushed=true
                 break
               fi
               echo "Push rejected, retrying with rebase ($i/3)..."
               git pull --rebase origin main
             done
+            echo "pushed=$pushed" >> "$GITHUB_OUTPUT"
           fi
+
+      # A push made with the default GITHUB_TOKEN does NOT trigger other
+      # workflows (GitHub's anti-recursion rule) — so deploy.yml would
+      # otherwise never run after this bot commits new law data. Dispatch it
+      # explicitly instead of relying on its `on: push` trigger.
+      - name: Trigger site deploy
+        if: steps.commit.outputs.pushed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh workflow run deploy.yml --ref main
