@@ -47,5 +47,14 @@ jobs:
           else
             git add data/laws.ts
             git commit -m "chore: monthly law updates refresh"
-            git push
+            # main can move between checkout and push (e.g. someone pushing a
+            # code change at the same time) — retry a few times with a rebase
+            # instead of failing the whole run over a timing collision.
+            for i in 1 2 3; do
+              if git push; then
+                break
+              fi
+              echo "Push rejected, retrying with rebase ($i/3)..."
+              git pull --rebase origin main
+            done
           fi
