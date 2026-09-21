@@ -1,7 +1,7 @@
 // Monthly job (see .github/workflows/update-laws.yml):
-// 1. Run several targeted searches (Google Custom Search, restricted to a
-//    curated list of official/legal sites configured on the search engine
-//    itself) covering the past year, looking for cadastral/land law changes
+// 1. Run several targeted searches (Serper.dev — Google results as JSON,
+//    restricted in the query itself to a curated list of official/legal
+//    sites) covering the past year, looking for cadastral/land law changes
 // 2. Keep only items relevant to cadastral/land/real-estate work
 // 3. Skip anything already stored in the Google Sheet (dedup by link/title)
 // 4. Ask DeepSeek to pick the 6 most important/popular/socially relevant new
@@ -16,21 +16,23 @@ import { google } from 'googleapis';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-const GOOGLE_SEARCH_URL = 'https://www.googleapis.com/customsearch/v1';
+const SERPER_SEARCH_URL = 'https://google.serper.dev/search';
 // Restrict which sites count as "official" here in code as a second line of
-// defense — the Programmable Search Engine itself should already be scoped
-// to these domains, but the API technically allows a CSE configured wider.
+// defense — the `site:` operators baked into each query below should already
+// keep results scoped to these domains, but this filters out any stragglers.
 const ALLOWED_DOMAINS = ['pravo.gov.ru', 'rosreestr.gov.ru', 'consultant.ru', 'garant.ru'];
+const SITE_FILTER = ALLOWED_DOMAINS.map((d) => `site:${d}`).join(' OR ');
 
 // Каждый запрос — отдельная тема, чтобы покрыть разные интересные клиентам
-// направления, а не полагаться на одну общую формулировку.
+// направления, а не полагаться на одну общую формулировку. site: ограничивает
+// выдачу только официальными источниками прямо в самом запросе.
 const SEARCH_QUERIES = [
-  'изменения в законодательстве кадастровый учет земельных участков',
-  'дачная амнистия изменения закон',
-  'межевание земельного участка новый закон',
-  'технический план недвижимости изменения в законе',
-  'регистрация прав на недвижимость новые правила',
-  'кадастровая стоимость земельного участка новый порядок',
+  `изменения в законодательстве кадастровый учет земельных участков (${SITE_FILTER})`,
+  `дачная амнистия изменения закон (${SITE_FILTER})`,
+  `межевание земельного участка новый закон (${SITE_FILTER})`,
+  `технический план недвижимости изменения в законе (${SITE_FILTER})`,
+  `регистрация прав на недвижимость новые правила (${SITE_FILTER})`,
+  `кадастровая стоимость земельного участка новый порядок (${SITE_FILTER})`,
 ];
 
 // date | title | summary (DeepSeek) | details (DeepSeek, JSON array) | source | link
@@ -74,26 +76,32 @@ function isAllowedDomain(link) {
   }
 }
 
-async function searchGoogle(query) {
-  const apiKey = process.env.GOOGLE_SEARCH_API_KEY;
-  const cx = process.env.GOOGLE_SEARCH_CX;
-  if (!apiKey || !cx) throw new Error('GOOGLE_SEARCH_API_KEY / GOOGLE_SEARCH_CX is not set');
+async function searchSerper(query) {
+  const apiKey = process.env.SERPER_API_KEY;
+  if (!apiKey) throw new Error('SERPER_API_KEY is not set');
 
-  const url = new URL(GOOGLE_SEARCH_URL);
-  url.searchParams.set('key', apiKey);
-  url.searchParams.set('cx', cx);
-  url.searchParams.set('q', query);
-  url.searchParams.set('dateRestrict', 'y1'); // не старше года
-  url.searchParams.set('num', '5');
+  const response = await fetch(SERPER_SEARCH_URL, {
+    method: 'POST',
+    headers: {
+      'X-API-KEY': apiKey,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      q: query,
+      gl: 'ru',
+      hl: 'ru',
+      num: 5,
+      tbs: 'qdr:y', // не старше года
+    }),
+  });
 
-  const response = await fetch(url);
   if (!response.ok) {
     const errText = await response.text();
-    throw new Error(`Google Search API error ${response.status} for query "${query}": ${errText}`);
+    throw new Error(`Serper API error ${response.status} for query "${query}": ${errText}`);
   }
 
   const data = await response.json();
-  return (data.items || []).map((item) => ({
+  return (data.organic || []).map((item) => ({
     title: item.title,
     contentSnippet: item.snippet,
     link: item.link,
@@ -107,7 +115,7 @@ async function fetchAllCandidates() {
   const all = [];
 
   for (const query of SEARCH_QUERIES) {
-    const results = await searchGoogle(query);
+    const results = await searchSerper(query);
     for (const item of results) {
       if (!item.link || seenLinks.has(item.link) || seenTitles.has(item.title)) continue;
       if (!isAllowedDomain(item.link)) continue;
