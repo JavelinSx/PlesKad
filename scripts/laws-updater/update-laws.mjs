@@ -16,7 +16,11 @@ import Parser from 'rss-parser';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const RSS_URL = 'https://www.consultant.ru/rss/hotdocs.xml';
-const SHEET_RANGE = 'laws!A:F'; // date | title | summary | details (JSON array) | source | link
+// date | title | summary (DeepSeek) | details (DeepSeek, JSON array) | source | link
+// | ручное краткое описание (override) | ручная расшифровка (override, одна строка = один пункт)
+// Столбцы G и H заполняются человеком вручную прямо в таблице — если заполнены,
+// они полностью заменяют собой C/D при сборке сайта (см. main()).
+const SHEET_RANGE = 'laws!A:H';
 const MAX_NEW_PER_RUN = 6;
 const CANDIDATE_POOL_SIZE = 25; // how many relevant+new RSS items we show the model to choose from
 const MAX_ITEMS_IN_SITE = 12;
@@ -244,14 +248,24 @@ async function main() {
 
   const finalRows = await readRows(sheets);
   const parsedRows = finalRows
-    .map((r) => ({
-      date: r[0],
-      t: r[1],
-      summary: r[2],
-      details: safeParseJSON(r[3]) || [r[3] || ''],
-      src: r[4],
-      link: r[5],
-    }))
+    .map((r) => {
+      const manualSummary = (r[6] || '').trim();
+      const manualDetails = (r[7] || '')
+        .trim()
+        .split('\n')
+        .map((line) => line.trim())
+        .filter(Boolean);
+
+      return {
+        date: r[0],
+        t: r[1],
+        // Ручные столбцы G/H (если заполнены) приоритетнее версии от DeepSeek.
+        summary: manualSummary || r[2],
+        details: manualDetails.length > 0 ? manualDetails : safeParseJSON(r[3]) || [r[3] || ''],
+        src: r[4],
+        link: r[5],
+      };
+    })
     .filter((r) => r.date && r.t)
     .slice(-MAX_ITEMS_IN_SITE)
     .reverse();
