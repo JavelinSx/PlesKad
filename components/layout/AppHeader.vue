@@ -15,7 +15,10 @@
 
       <div class="spacer" />
 
-      <a :href="contacts.phoneHref" class="header-phone">{{ contacts.phone }}</a>
+      <div class="header-phones">
+        <a :href="contacts.phoneHref" class="header-phone">{{ contacts.phone }}</a>
+        <a :href="contacts.phone2Href" class="header-phone">{{ contacts.phone2 }}</a>
+      </div>
 
       <ThemeToggle />
 
@@ -82,14 +85,18 @@ import { contacts } from '~/data/team';
 .spacer {
   flex: 1;
 }
-.header-phone {
+.header-phones {
   display: none;
-  font-size: 13px;
-  color: var(--pk-link);
 }
-@media (min-width: 720px) {
-  .header-phone {
-    display: inline-flex;
+.header-phone {
+  font-size: 12.5px;
+  color: var(--pk-link);
+  line-height: 1.4;
+}
+@media (min-width: 900px) {
+  .header-phones {
+    display: flex;
+    flex-direction: column;
   }
 }
 .btn-outline {
