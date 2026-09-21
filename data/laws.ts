@@ -1,7 +1,7 @@
 import type { LawUpdate } from './types';
 
 /**
- * Автообновляемый список — раз в неделю GitHub Actions (.github/workflows/update-laws.yml)
+ * Автообновляемый список — раз в месяц GitHub Actions (.github/workflows/update-laws.yml)
  * подтягивает новые записи через scripts/update-laws.mjs, хранит их в Google Sheet
  * (единый источник правды + защита от дублей) и перезаписывает этот файл при коммите.
  * Ниже — стартовый набор для первого релиза, пока автоматизация не запущена.

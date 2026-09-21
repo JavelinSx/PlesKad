@@ -1,4 +1,4 @@
-// Weekly job (see .github/workflows/update-laws.yml):
+// Monthly job (see .github/workflows/update-laws.yml):
 // 1. Pull the ConsultantPlus "hot documents" RSS feed
 // 2. Keep only items relevant to cadastral/land/real-estate work
 // 3. Skip anything already stored in the Google Sheet (dedup by link/title)
