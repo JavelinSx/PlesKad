@@ -2,7 +2,8 @@
 // 1. Pull the ConsultantPlus "hot documents" RSS feed
 // 2. Keep only items relevant to cadastral/land/real-estate work
 // 3. Skip anything already stored in the Google Sheet (dedup by link/title)
-// 4. Ask DeepSeek to rewrite the top 3 new items in plain language
+// 4. Ask DeepSeek to pick the 6 most important/popular/socially relevant new
+//    items out of the whole relevant pool, and rewrite them in plain language
 // 5. Append the new rows to the Sheet (source of truth / manual review point)
 // 6. Regenerate ../../data/laws.ts from the sheet so the site picks it up on next deploy
 
@@ -16,7 +17,8 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const RSS_URL = 'https://www.consultant.ru/rss/hotdocs.xml';
 const SHEET_RANGE = 'laws!A:F'; // date | title | summary | details (JSON array) | source | link
-const MAX_NEW_PER_RUN = 3;
+const MAX_NEW_PER_RUN = 6;
+const CANDIDATE_POOL_SIZE = 25; // how many relevant+new RSS items we show the model to choose from
 const MAX_ITEMS_IN_SITE = 12;
 const OUTPUT_TS_PATH = path.resolve(__dirname, '../../data/laws.ts');
 const DEEPSEEK_API_URL = 'https://api.deepseek.com/chat/completions';
@@ -70,23 +72,7 @@ async function readRows(sheets) {
   return res.data.values || [];
 }
 
-async function humanize(item) {
-  const prompt = `Ты помогаешь кадастровой компании «ПлесКад» объяснять клиентам изменения в законодательстве простым языком, без юридического жаргона.
-
-Официальное описание изменения:
-Заголовок: ${item.title}
-Текст: ${item.description}
-
-Ответь СТРОГО валидным JSON, без markdown-обёртки и пояснений вокруг, в формате:
-{"summary": "...", "details": ["..."]}
-
-Требования:
-- "summary" — одна короткая фраза, до 100 символов, тизер для короткой ленты на сайте.
-- "details" — разбор для клиентов на 5-6 предложений по смыслу.
-  - Если изменение описывает последовательность действий / пошаговый порядок — раздели на отдельные пункты массива, каждый пункт — один шаг, коротко и по делу.
-  - Если это просто описание изменения без чёткой последовательности — верни ОДИН элемент массива: связный абзац на 5-6 предложений.
-- Пиши так, как будто объясняешь клиенту по телефону, а не цитируешь закон. Никакой воды и канцелярита.`;
-
+async function callDeepSeek(prompt) {
   const apiKey = process.env.DEEPSEEK_API_KEY;
   if (!apiKey) throw new Error('DEEPSEEK_API_KEY is not set');
 
@@ -116,13 +102,58 @@ async function humanize(item) {
     throw new Error(`Empty response from DeepSeek: ${JSON.stringify(data)}`);
   }
 
-  const parsed = JSON.parse(text);
+  return JSON.parse(text);
+}
 
-  if (!parsed.summary || !Array.isArray(parsed.details) || parsed.details.length === 0) {
-    throw new Error(`Unexpected DeepSeek response shape: ${text}`);
+/**
+ * Sends the whole pool of relevant/new candidates to DeepSeek in one call and
+ * asks it to both pick the best up to MAX_NEW_PER_RUN and rewrite them in
+ * plain language — selection and humanization happen together so the model
+ * judges importance/popularity/social relevance with full context of what
+ * else is available this run, not one item in isolation.
+ */
+async function selectAndHumanize(candidates) {
+  const listing = candidates
+    .map((item, i) => {
+      const desc = (item.contentSnippet || item.content || '').slice(0, 300);
+      return `${i}. Заголовок: ${item.title}\n   Описание: ${desc}`;
+    })
+    .join('\n\n');
+
+  const prompt = `Ты помогаешь кадастровой компании «ПлесКад» вести раздел «Изменения в законодательстве» на сайте для обычных людей (собственники земли, домов, квартир в небольшом районе), а не для юристов.
+
+Ниже — пронумерованный список ${candidates.length} официальных новостей об изменениях в законодательстве, которые касаются недвижимости/земли/кадастра. Выбери из них НЕ БОЛЕЕ ${MAX_NEW_PER_RUN} самых достойных публикации на сайте, по трём критериям:
+а) ВАЖНОСТЬ — реально меняет права, обязанности или порядок действий многих людей (а не узкая техническая/ведомственная правка);
+б) ПОПУЛЯРНОСТЬ — тема, с которой обычные люди действительно сталкиваются (регистрация прав, налоги на недвижимость, оформление участков, домов, квартир, наследство и т.п.);
+в) СОЦИАЛЬНЫЙ СПРОС — по теме есть широкий общественный интерес, а не только интерес узких специалистов.
+
+Если подходящих меньше ${MAX_NEW_PER_RUN} — выбери меньше, не натягивай слабые пункты. Если совсем ничего не подходит — верни пустой список.
+
+Список:
+${listing}
+
+Ответь СТРОГО валидным JSON, без markdown-обёртки и пояснений вокруг, в формате:
+{"selected": [{"index": 0, "summary": "...", "details": ["..."]}, ...]}
+
+Для каждого выбранного пункта:
+- "index" — номер из списка выше.
+- "summary" — одна короткая фраза, до 100 символов, тизер для короткой ленты на сайте.
+- "details" — разбор для клиентов на 5-6 предложений по смыслу.
+  - Если изменение описывает последовательность действий / пошаговый порядок — раздели на отдельные пункты массива, каждый пункт — один шаг, коротко и по делу.
+  - Если это просто описание изменения без чёткой последовательности — верни ОДИН элемент массива: связный абзац на 5-6 предложений.
+- Пиши так, как будто объясняешь клиенту по телефону, а не цитируешь закон. Никакой воды и канцелярита.
+Список "selected" упорядочи от самого важного/популярного к менее важному.`;
+
+  const parsed = await callDeepSeek(prompt);
+
+  if (!Array.isArray(parsed.selected)) {
+    throw new Error(`Unexpected DeepSeek response shape: ${JSON.stringify(parsed)}`);
   }
 
-  return parsed;
+  return parsed.selected
+    .filter((s) => Number.isInteger(s.index) && candidates[s.index] && s.summary && Array.isArray(s.details) && s.details.length > 0)
+    .slice(0, MAX_NEW_PER_RUN)
+    .map((s) => ({ item: candidates[s.index], summary: s.summary, details: s.details }));
 }
 
 function buildTsFile(rows) {
@@ -142,7 +173,7 @@ function buildTsFile(rows) {
   return `import type { LawUpdate } from './types';
 
 /**
- * Автоматически обновляется еженедельно через
+ * Автоматически обновляется раз в месяц через
  * scripts/laws-updater/update-laws.mjs (.github/workflows/update-laws.yml).
  * Источник истины — Google Sheet, сверка дублей происходит там.
  * Ручные правки этого файла будут перезаписаны следующим запуском —
@@ -168,44 +199,43 @@ async function main() {
   const existingLinks = new Set(existingRows.map((r) => r[5]).filter(Boolean));
   const existingTitles = new Set(existingRows.map((r) => r[1]).filter(Boolean));
 
-  const candidates = feed.items.filter(
-    (item) => isRelevant(item) && !existingLinks.has(item.link) && !existingTitles.has(item.title)
-  );
+  const candidates = feed.items
+    .filter((item) => isRelevant(item) && !existingLinks.has(item.link) && !existingTitles.has(item.title))
+    .slice(0, CANDIDATE_POOL_SIZE);
 
-  const toProcess = candidates.slice(0, MAX_NEW_PER_RUN);
-  console.log(`Relevant & new: ${candidates.length}. Would process: ${toProcess.length}.`);
+  console.log(`Relevant & new: ${candidates.length} (pool capped at ${CANDIDATE_POOL_SIZE}). Asking DeepSeek to pick up to ${MAX_NEW_PER_RUN}.`);
 
   if (DRY_RUN) {
     console.log('\nDRY RUN — stopping here. No DeepSeek calls, no writes to the Sheet, no changes to data/laws.ts.');
-    console.log('Candidates that would be sent to DeepSeek:');
-    for (const item of toProcess) {
+    console.log('Candidate pool that would be sent to DeepSeek for selection:');
+    for (const item of candidates) {
       console.log(`  - [${item.pubDate || item.isoDate}] ${item.title}\n    ${item.link}`);
     }
-    if (toProcess.length === 0) {
+    if (candidates.length === 0) {
       console.log('  (none — either nothing relevant in the current feed, or everything is already in the sheet)');
     }
     return;
   }
 
-  if (toProcess.length > 0) {
-    const newRows = [];
+  if (candidates.length > 0) {
+    const selected = await selectAndHumanize(candidates);
 
-    for (const item of toProcess) {
-      const date = new Date(item.pubDate || item.isoDate || Date.now()).toLocaleDateString('ru-RU');
-      const { summary, details } = await humanize({
-        title: item.title,
-        description: item.contentSnippet || item.content || item.title,
-      });
-      newRows.push([date, item.title, summary, JSON.stringify(details), 'КонсультантПлюс', item.link || '']);
-    }
+    console.log(`DeepSeek selected ${selected.length} item(s) out of ${candidates.length} candidates.`);
 
-    await sheets.spreadsheets.values.append({
-      spreadsheetId: process.env.GOOGLE_SHEET_ID,
-      range: SHEET_RANGE,
-      valueInputOption: 'RAW',
-      insertDataOption: 'INSERT_ROWS',
-      requestBody: { values: newRows },
+    const newRows = selected.map(({ item: pick, summary, details }) => {
+      const date = new Date(pick.pubDate || pick.isoDate || Date.now()).toLocaleDateString('ru-RU');
+      return [date, pick.title, summary, JSON.stringify(details), 'КонсультантПлюс', pick.link || ''];
     });
+
+    if (newRows.length > 0) {
+      await sheets.spreadsheets.values.append({
+        spreadsheetId: process.env.GOOGLE_SHEET_ID,
+        range: SHEET_RANGE,
+        valueInputOption: 'RAW',
+        insertDataOption: 'INSERT_ROWS',
+        requestBody: { values: newRows },
+      });
+    }
 
     console.log(`Appended ${newRows.length} new row(s) to the sheet.`);
   } else {
