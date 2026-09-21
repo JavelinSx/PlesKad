@@ -7,14 +7,14 @@
     <div v-for="law in lawUpdates" :key="law.t" class="law-row">
       <span class="law-date">{{ law.date }}</span>
       <span>
-        <span class="law-title">{{ law.t }}</span>
+        <span class="law-title">{{ law.summary }}</span>
 
         <p v-if="law.details.length === 1" class="law-desc">{{ law.details[0] }}</p>
         <ol v-else class="law-steps">
           <li v-for="(step, i) in law.details" :key="i">{{ step }}</li>
         </ol>
 
-        <span class="law-src">Источник: {{ law.src }}</span>
+        <a :href="law.link" target="_blank" rel="noopener" class="law-src">Источник: {{ law.src }} →</a>
       </span>
     </div>
   </PopupBase>
@@ -84,5 +84,8 @@ const { activePopup, close } = usePopups();
 .law-src {
   font-size: 12px;
   color: var(--pk-text-3);
+}
+.law-src:hover {
+  color: var(--pk-link);
 }
 </style>

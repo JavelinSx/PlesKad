@@ -11,9 +11,9 @@
       <div class="laws-grid">
         <div v-for="law in topLaws" :key="law.t" class="law-item">
           <div class="law-date">{{ law.date }}</div>
-          <div class="law-title">{{ law.t }}</div>
-          <p class="law-desc">{{ law.summary }}</p>
-          <span class="law-src">Источник: {{ law.src }}</span>
+          <div class="law-title">{{ law.summary }}</div>
+          <p class="law-desc">{{ law.details[0] }}</p>
+          <a :href="law.link" target="_blank" rel="noopener" class="law-src">Источник: {{ law.src }} →</a>
         </div>
       </div>
     </div>
@@ -92,9 +92,16 @@ const topLaws = lawUpdates.slice(0, 6);
   font-size: 13px;
   color: var(--pk-text-3);
   margin: 0 0 10px;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 .law-src {
   font-size: 11.5px;
   color: var(--pk-text-3);
+}
+.law-src:hover {
+  color: var(--pk-link);
 }
 </style>
