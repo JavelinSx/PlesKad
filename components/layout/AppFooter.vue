@@ -33,6 +33,7 @@
         <h6 class="footer-heading">Контакты</h6>
         <div class="footer-links footer-contacts">
           <span class="footer-link-accent">{{ contacts.phone }}</span>
+          <span class="footer-link-accent">{{ contacts.phone2 }}</span>
           <span>{{ contacts.email }}</span>
           <span>{{ contacts.address }}</span>
           <span class="footer-link--muted">{{ contacts.hours }}</span>

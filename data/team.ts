@@ -30,6 +30,8 @@ export const companyStats = [
 export const contacts = {
   phone: '+7 (911) 873-99-97',
   phoneHref: 'tel:+79118739997',
+  phone2: '+7 (909) 552-20-52',
+  phone2Href: 'tel:+79095522052',
   email: 'zuew23@mail.ru',
   address: 'рп. Плесецк, ул. Кооперативная, д. 4, 1 этаж',
   hours: 'Пн–Пт 9:00–17:00, Сб–Вс выходной',

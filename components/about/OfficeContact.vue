@@ -11,6 +11,7 @@
           <span>
             <span class="office-label">Телефон</span>
             <a :href="contacts.phoneHref" class="office-value office-value--accent">{{ contacts.phone }}</a>
+            <a :href="contacts.phone2Href" class="office-value office-value--accent office-phone-second">{{ contacts.phone2 }}</a>
           </span>
           <span>
             <span class="office-label">Почта</span>
@@ -95,6 +96,10 @@ import { contacts } from '~/data/team';
 .office-value--accent {
   color: var(--pk-link);
   font-weight: 500;
+}
+.office-phone-second {
+  display: block;
+  margin-top: 2px;
 }
 .office-cta {
   margin-top: 22px;

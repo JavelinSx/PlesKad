@@ -6,6 +6,7 @@
       <div class="cta-actions">
         <NuxtLink to="/request" class="btn-primary">Оставить заявку</NuxtLink>
         <a :href="contacts.phoneHref" class="btn-secondary">{{ contacts.phone }}</a>
+        <a :href="contacts.phone2Href" class="btn-secondary">{{ contacts.phone2 }}</a>
       </div>
     </div>
   </section>

@@ -13,7 +13,10 @@
       <div class="success-icon">✓</div>
       <h3 class="success-title">Заявка отправлена</h3>
       <p class="success-text">Мы свяжемся с вами в течение рабочего дня. Если срочно — звоните напрямую.</p>
-      <a :href="contacts.phoneHref" class="btn-primary">{{ contacts.phone }}</a>
+      <div class="success-actions">
+        <a :href="contacts.phoneHref" class="btn-primary">{{ contacts.phone }}</a>
+        <a :href="contacts.phone2Href" class="btn-secondary">{{ contacts.phone2 }}</a>
+      </div>
     </div>
   </div>
 </template>
@@ -53,5 +56,11 @@ const store = useRequestStore();
   font-size: 14.5px;
   color: var(--pk-text-2);
   margin: 0 0 20px;
+}
+.success-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+  flex-wrap: wrap;
 }
 </style>

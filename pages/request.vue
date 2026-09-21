@@ -15,6 +15,7 @@
         <div class="card side-card">
           <h4 class="side-title">Быстрее — позвонить</h4>
           <a :href="contacts.phoneHref" class="side-phone">{{ contacts.phone }}</a>
+          <a :href="contacts.phone2Href" class="side-phone side-phone-second">{{ contacts.phone2 }}</a>
           <p class="side-note">{{ contacts.hours }}, {{ contacts.address }}</p>
         </div>
         <div class="card side-card">
@@ -104,9 +105,14 @@ useHead({
   font-weight: 500;
 }
 .side-phone {
+  display: block;
   font-size: 20px;
   font-weight: 500;
   color: var(--pk-link);
+}
+.side-phone-second {
+  font-size: 16px;
+  margin-top: 4px;
 }
 .side-note {
   font-size: 13px;
