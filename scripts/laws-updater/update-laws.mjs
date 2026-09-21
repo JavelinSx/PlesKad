@@ -1,5 +1,7 @@
 // Monthly job (see .github/workflows/update-laws.yml):
-// 1. Pull the ConsultantPlus "hot documents" RSS feed
+// 1. Run several targeted searches (Google Custom Search, restricted to a
+//    curated list of official/legal sites configured on the search engine
+//    itself) covering the past year, looking for cadastral/land law changes
 // 2. Keep only items relevant to cadastral/land/real-estate work
 // 3. Skip anything already stored in the Google Sheet (dedup by link/title)
 // 4. Ask DeepSeek to pick the 6 most important/popular/socially relevant new
@@ -11,18 +13,33 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { google } from 'googleapis';
-import Parser from 'rss-parser';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-const RSS_URL = 'https://www.consultant.ru/rss/hotdocs.xml';
+const GOOGLE_SEARCH_URL = 'https://www.googleapis.com/customsearch/v1';
+// Restrict which sites count as "official" here in code as a second line of
+// defense — the Programmable Search Engine itself should already be scoped
+// to these domains, but the API technically allows a CSE configured wider.
+const ALLOWED_DOMAINS = ['pravo.gov.ru', 'rosreestr.gov.ru', 'consultant.ru', 'garant.ru'];
+
+// Каждый запрос — отдельная тема, чтобы покрыть разные интересные клиентам
+// направления, а не полагаться на одну общую формулировку.
+const SEARCH_QUERIES = [
+  'изменения в законодательстве кадастровый учет земельных участков',
+  'дачная амнистия изменения закон',
+  'межевание земельного участка новый закон',
+  'технический план недвижимости изменения в законе',
+  'регистрация прав на недвижимость новые правила',
+  'кадастровая стоимость земельного участка новый порядок',
+];
+
 // date | title | summary (DeepSeek) | details (DeepSeek, JSON array) | source | link
 // | ручное краткое описание (override) | ручная расшифровка (override, одна строка = один пункт)
 // Столбцы G и H заполняются человеком вручную прямо в таблице — если заполнены,
 // они полностью заменяют собой C/D при сборке сайта (см. main()).
 const SHEET_RANGE = 'laws!A:H';
 const MAX_NEW_PER_RUN = 6;
-const CANDIDATE_POOL_SIZE = 25; // how many relevant+new RSS items we show the model to choose from
+const CANDIDATE_POOL_SIZE = 25; // how many relevant+new search results we show the model to choose from
 const MAX_ITEMS_IN_SITE = 12;
 const OUTPUT_TS_PATH = path.resolve(__dirname, '../../data/laws.ts');
 const DEEPSEEK_API_URL = 'https://api.deepseek.com/chat/completions';
@@ -46,6 +63,61 @@ const KEYWORDS = [
 function isRelevant(item) {
   const text = `${item.title || ''} ${item.contentSnippet || item.content || ''}`;
   return KEYWORDS.some((re) => re.test(text));
+}
+
+function isAllowedDomain(link) {
+  try {
+    const host = new URL(link).hostname.replace(/^www\./, '');
+    return ALLOWED_DOMAINS.some((domain) => host === domain || host.endsWith(`.${domain}`));
+  } catch {
+    return false;
+  }
+}
+
+async function searchGoogle(query) {
+  const apiKey = process.env.GOOGLE_SEARCH_API_KEY;
+  const cx = process.env.GOOGLE_SEARCH_CX;
+  if (!apiKey || !cx) throw new Error('GOOGLE_SEARCH_API_KEY / GOOGLE_SEARCH_CX is not set');
+
+  const url = new URL(GOOGLE_SEARCH_URL);
+  url.searchParams.set('key', apiKey);
+  url.searchParams.set('cx', cx);
+  url.searchParams.set('q', query);
+  url.searchParams.set('dateRestrict', 'y1'); // не старше года
+  url.searchParams.set('num', '5');
+
+  const response = await fetch(url);
+  if (!response.ok) {
+    const errText = await response.text();
+    throw new Error(`Google Search API error ${response.status} for query "${query}": ${errText}`);
+  }
+
+  const data = await response.json();
+  return (data.items || []).map((item) => ({
+    title: item.title,
+    contentSnippet: item.snippet,
+    link: item.link,
+  }));
+}
+
+/** Runs every SEARCH_QUERIES entry and returns a deduplicated (by link) pool. */
+async function fetchAllCandidates() {
+  const seenLinks = new Set();
+  const seenTitles = new Set();
+  const all = [];
+
+  for (const query of SEARCH_QUERIES) {
+    const results = await searchGoogle(query);
+    for (const item of results) {
+      if (!item.link || seenLinks.has(item.link) || seenTitles.has(item.title)) continue;
+      if (!isAllowedDomain(item.link)) continue;
+      seenLinks.add(item.link);
+      seenTitles.add(item.title);
+      all.push(item);
+    }
+  }
+
+  return all;
 }
 
 function safeParseJSON(value) {
@@ -204,9 +276,8 @@ ${entries}
 const DRY_RUN = process.env.DRY_RUN === 'true';
 
 async function main() {
-  const parser = new Parser();
-  const feed = await parser.parseURL(RSS_URL);
-  console.log(`Fetched RSS feed OK: ${feed.items.length} items.`);
+  const rawCandidates = await fetchAllCandidates();
+  console.log(`Search returned ${rawCandidates.length} unique, allowed-domain result(s) across ${SEARCH_QUERIES.length} quer${SEARCH_QUERIES.length === 1 ? 'y' : 'ies'}.`);
 
   const sheets = await getSheetsClient();
   const existingRows = await readRows(sheets);
@@ -215,7 +286,7 @@ async function main() {
   const existingLinks = new Set(existingRows.map((r) => r[5]).filter(Boolean));
   const existingTitles = new Set(existingRows.map((r) => r[1]).filter(Boolean));
 
-  const candidates = feed.items
+  const candidates = rawCandidates
     .filter((item) => isRelevant(item) && !existingLinks.has(item.link) && !existingTitles.has(item.title))
     .slice(0, CANDIDATE_POOL_SIZE);
 
@@ -225,10 +296,10 @@ async function main() {
     console.log('\nDRY RUN — stopping here. No DeepSeek calls, no writes to the Sheet, no changes to data/laws.ts.');
     console.log('Candidate pool that would be sent to DeepSeek for selection:');
     for (const item of candidates) {
-      console.log(`  - [${item.pubDate || item.isoDate}] ${item.title}\n    ${item.link}`);
+      console.log(`  - ${item.title}\n    ${item.link}`);
     }
     if (candidates.length === 0) {
-      console.log('  (none — either nothing relevant in the current feed, or everything is already in the sheet)');
+      console.log('  (none — either nothing relevant this run, or everything is already in the sheet)');
     }
     return;
   }
@@ -238,9 +309,16 @@ async function main() {
 
     console.log(`DeepSeek selected ${selected.length} item(s) out of ${candidates.length} candidates.`);
 
+    const today = new Date().toLocaleDateString('ru-RU');
     const newRows = selected.map(({ item: pick, summary, details }) => {
-      const date = new Date(pick.pubDate || pick.isoDate || Date.now()).toLocaleDateString('ru-RU');
-      return [date, pick.title, summary, JSON.stringify(details), 'КонсультантПлюс', pick.link || ''];
+      const src = (() => {
+        try {
+          return new URL(pick.link).hostname.replace(/^www\./, '');
+        } catch {
+          return 'Источник';
+        }
+      })();
+      return [today, pick.title, summary, JSON.stringify(details), src, pick.link || ''];
     });
 
     if (newRows.length > 0) {

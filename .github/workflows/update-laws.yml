@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
     inputs:
       dry_run:
-        description: "Тестовый прогон: проверить RSS + доступ к таблице, без вызова DeepSeek и без записи"
+        description: "Тестовый прогон: проверить поиск + доступ к таблице, без вызова DeepSeek и без записи"
         type: boolean
         default: false
 
@@ -35,6 +35,8 @@ jobs:
           GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
           GOOGLE_SHEET_ID: ${{ secrets.GOOGLE_SHEET_ID }}
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+          GOOGLE_SEARCH_API_KEY: ${{ secrets.GOOGLE_SEARCH_API_KEY }}
+          GOOGLE_SEARCH_CX: ${{ secrets.GOOGLE_SEARCH_CX }}
           DRY_RUN: ${{ inputs.dry_run == true }}
         run: node update-laws.mjs
 
